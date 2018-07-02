@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'pry'
+require 'date'
 require 'net/http'
 require 'uri'
 require 'optparse'
@@ -17,7 +17,9 @@ class CircleCIBuildReport
     earliest_seen = Date.today
     since = Date.today - 30
     offset = 0
-    builds = [['build_num', 'start_date', 'status']]
+
+    headers = ['build_num', 'start_time', 'stop_time', 'build_time_millis', 'outcome', 'branch', 'parallel', 'why', 'build_url']
+    build_data = [headers]
     end_of_builds_reached = false
 
     while((since < earliest_seen) || end_of_builds_reached)
@@ -29,17 +31,19 @@ class CircleCIBuildReport
         offset
       )
       response = request.perform
-      response_json = JSON.parse(response.body)
-      end_of_builds_reached = true if response_json == []
-      response_json.each do |build_json|
+      response_body = JSON.parse(response.body)
+
+      end_of_builds_reached = true if response_body == []
+
+      response_body.each do |build_json|
         available_date = build_json['start_date'] || build_json['author_date'] || build_json['usage_queued_at']
         build_date = Date.parse(available_date)
         earliest_seen = build_date if build_date < earliest_seen
-        builds << [build_json['build_num'], available_date, build_json['status']]
+        build_data << build_json.fetch_values(*headers)
       end
       offset += PAGINATION_LIMIT
     end
-    File.open(config[:out], 'w') { |file| file.write(builds.map { |build| build.join(', ') }.join("\n")) }
+    File.open(config[:out], 'w') { |file| file.write(build_data.map { |build| build.join(', ') }.join("\n")) }
   end
 
   def self.parse_opts
